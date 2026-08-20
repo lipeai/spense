@@ -1,0 +1,1077 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Spense — Smart expense tracking</title>
+<style>
+  /* ============ Design tokens ============ */
+  :root{
+    color-scheme: light;
+    /* brand ramp */
+    --brand-50:#f6f3ff; --brand-100:#ede8fd; --brand-200:#ddd2fb;
+    --brand-300:#c4adf6; --brand-400:#a78bfa; --brand-500:#8b5cf6;
+    --brand-600:#6d28d9; --brand-700:#5b21b6; --brand-800:#4c1d95;
+    --grad: linear-gradient(135deg,#8b5cf6 0%,#6d28d9 55%,#5b21b6 100%);
+    --grad-soft: linear-gradient(135deg,#ede8fd 0%,#f6f3ff 100%);
+    /* surfaces & ink */
+    --page:#f7f5fc; --surface:#ffffff;
+    --ink-1:#1a1523; --ink-2:#5b5566; --ink-3:#8a8494;
+    --grid:#eceaf1; --baseline:#d6d3de;
+    --border:rgba(76,29,149,.10);
+    /* categorical series (validated) */
+    --s-housing:#6d28d9; --s-food:#eb6834; --s-transport:#1baf7a;
+    --s-shopping:#eda100; --s-fun:#e87ba4; --s-other:#008300;
+    /* status */
+    --good-text:#006300; --warning:#fab219; --critical:#d03b3b;
+    --shadow-card:0 10px 30px -14px rgba(76,29,149,.14), 0 2px 6px -2px rgba(76,29,149,.06);
+    --shadow-pop:0 24px 60px -20px rgba(76,29,149,.35);
+    --r-card:20px;
+    --ease-spring:cubic-bezier(.34,1.4,.44,1);
+    --ease-out:cubic-bezier(.22,.61,.21,1);
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{
+    margin:0; font-family:system-ui,-apple-system,"Segoe UI",sans-serif;
+    color:var(--ink-1); background:var(--page); overflow:hidden;
+    -webkit-font-smoothing:antialiased;
+  }
+  /* ambient gradient glow */
+  body::before{
+    content:""; position:fixed; inset:0; pointer-events:none; z-index:0;
+    background:
+      radial-gradient(600px 400px at 8% -6%, rgba(139,92,246,.14), transparent 60%),
+      radial-gradient(700px 500px at 104% 12%, rgba(167,139,250,.12), transparent 60%),
+      radial-gradient(500px 420px at 60% 112%, rgba(196,173,246,.10), transparent 60%);
+  }
+
+  /* ============ Layout ============ */
+  .app{position:relative; z-index:1; display:flex; height:100vh}
+  .sidebar{
+    width:240px; flex:0 0 240px; padding:22px 16px; display:flex; flex-direction:column; gap:26px;
+    border-right:1px solid var(--border);
+    background:rgba(255,255,255,.55); backdrop-filter:blur(14px);
+    animation:slideInLeft .55s var(--ease-out) both;
+  }
+  @keyframes slideInLeft{from{opacity:0;transform:translateX(-16px)}to{opacity:1;transform:none}}
+  .logo{display:flex; align-items:center; gap:10px; padding:4px 8px}
+  .logo-mark{
+    width:36px;height:36px;border-radius:11px;background:var(--grad);
+    display:grid;place-items:center;color:#fff;font-weight:800;font-size:18px;
+    box-shadow:0 8px 18px -6px rgba(109,40,217,.55);
+  }
+  .logo-name{font-size:19px;font-weight:800;letter-spacing:-.02em;
+    background:var(--grad); -webkit-background-clip:text; background-clip:text; color:transparent}
+  nav{position:relative; display:flex; flex-direction:column; gap:4px}
+  .nav-pill{
+    position:absolute; left:0; width:100%; height:44px; border-radius:12px;
+    background:var(--grad); box-shadow:0 10px 22px -8px rgba(109,40,217,.5);
+    transition:transform .38s var(--ease-spring); z-index:0;
+  }
+  .nav-item{
+    position:relative; z-index:1; display:flex; align-items:center; gap:12px;
+    height:44px; padding:0 14px; border-radius:12px; cursor:pointer; border:0; background:none;
+    font:inherit; font-size:14px; font-weight:600; color:var(--ink-2);
+    transition:color .3s, transform .15s;
+  }
+  .nav-item:hover{transform:translateX(3px)}
+  .nav-item.active{color:#fff}
+  .nav-item svg{width:19px;height:19px;flex:0 0 19px}
+  .sidebar-foot{margin-top:auto; display:flex; flex-direction:column; gap:14px}
+  .promo{
+    border-radius:16px; padding:16px; background:var(--grad-soft); border:1px solid var(--brand-200);
+    font-size:12.5px; color:var(--ink-2); line-height:1.45;
+  }
+  .promo b{color:var(--brand-700)}
+  .user-card{display:flex; align-items:center; gap:10px; padding:8px}
+  .avatar{width:34px;height:34px;border-radius:50%;background:var(--grad);color:#fff;
+    display:grid;place-items:center;font-size:13px;font-weight:700}
+  .user-card .who{font-size:13px;font-weight:700}
+  .user-card .plan{font-size:11px;color:var(--ink-3)}
+
+  main{flex:1; min-width:0; display:flex; flex-direction:column; overflow:hidden}
+  .topbar{
+    display:flex; align-items:center; gap:16px; padding:18px 32px 14px;
+  }
+  .page-title{font-size:22px; font-weight:800; letter-spacing:-.02em}
+  .page-sub{font-size:13px; color:var(--ink-3); margin-top:2px}
+  .topbar .spacer{flex:1}
+  .btn{
+    border:0; cursor:pointer; font:inherit; font-weight:700; font-size:13.5px;
+    border-radius:12px; padding:11px 18px; display:inline-flex; align-items:center; gap:8px;
+    transition:transform .18s var(--ease-spring), box-shadow .25s, filter .2s;
+  }
+  .btn:active{transform:scale(.96)}
+  .btn-primary{background:var(--grad); color:#fff; box-shadow:0 10px 22px -8px rgba(109,40,217,.55)}
+  .btn-primary:hover{transform:translateY(-2px); box-shadow:0 16px 28px -10px rgba(109,40,217,.6)}
+  .btn-ghost{background:var(--surface); color:var(--brand-700); border:1px solid var(--border)}
+  .btn-ghost:hover{background:var(--brand-50)}
+  .btn-danger{background:#fdf1f1; color:var(--critical); border:1px solid rgba(208,59,59,.25)}
+  .btn-danger:hover{background:#fbe4e4}
+
+  .content{flex:1; overflow-y:auto; padding:8px 32px 40px}
+  .page{display:none}
+  .page.active{display:block; animation:pageIn .5s var(--ease-out) both}
+  @keyframes pageIn{from{opacity:0; transform:translateY(14px)}to{opacity:1; transform:none}}
+
+  /* ============ Cards & grids ============ */
+  .card{
+    background:var(--surface); border:1px solid var(--border); border-radius:var(--r-card);
+    box-shadow:var(--shadow-card); padding:20px 22px;
+    transition:transform .3s var(--ease-out), box-shadow .3s;
+  }
+  .card:hover{transform:translateY(-2px); box-shadow:0 16px 40px -16px rgba(76,29,149,.2)}
+  .card-title{font-size:14px; font-weight:700; margin:0 0 2px}
+  .card-sub{font-size:12px; color:var(--ink-3); margin:0 0 12px}
+
+  .kpi-grid{display:grid; grid-template-columns:repeat(4,1fr); gap:16px; margin-bottom:16px}
+  .kpi-grid .card{animation:pageIn .5s var(--ease-out) both}
+  .kpi-label{font-size:12.5px; color:var(--ink-2); font-weight:600}
+  .kpi-value{font-size:30px; font-weight:800; letter-spacing:-.02em; margin-top:6px; line-height:1.05}
+  .kpi-delta{display:inline-flex; align-items:center; gap:4px; margin-top:8px; font-size:12px; font-weight:700}
+  .kpi-delta.up-bad{color:var(--critical)} .kpi-delta.down-good{color:var(--good-text)}
+  .kpi-delta .vs{color:var(--ink-3); font-weight:500}
+  .kpi-spark{margin-top:10px}
+  .kpi-dot{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:6px;vertical-align:baseline}
+
+  .charts-grid{display:grid; grid-template-columns:1.9fr 1.1fr; gap:16px; margin-bottom:16px}
+  .charts-grid2{display:grid; grid-template-columns:1.4fr 1fr; gap:16px}
+
+  .chip-row{display:flex; gap:6px}
+  .chip{
+    border:1px solid var(--border); background:var(--surface); color:var(--ink-2);
+    font:inherit; font-size:12px; font-weight:700; padding:6px 12px; border-radius:999px; cursor:pointer;
+    transition:all .25s var(--ease-out);
+  }
+  .chip:hover{border-color:var(--brand-300); color:var(--brand-700)}
+  .chip.active{background:var(--grad); color:#fff; border-color:transparent; box-shadow:0 6px 14px -6px rgba(109,40,217,.55)}
+
+  .card-head{display:flex; align-items:flex-start; gap:12px; margin-bottom:8px}
+  .card-head .spacer{flex:1}
+
+  /* ============ Charts ============ */
+  svg text{font-family:inherit}
+  .axis-text{font-size:10.5px; fill:var(--ink-3)}
+  .gridline{stroke:var(--grid); stroke-width:1}
+  .baseline{stroke:var(--baseline); stroke-width:1}
+  .hover-capture{fill:transparent; cursor:crosshair}
+
+  .donut-wrap{display:flex; align-items:center; gap:8px}
+  .donut-svg{flex:0 0 200px}
+  .donut-seg{transition:stroke-dasharray .9s var(--ease-out), stroke-width .25s var(--ease-out), opacity .25s; cursor:pointer}
+  .donut-seg:hover{stroke-width:30}
+  .donut-center-val{font-size:22px; font-weight:800; fill:var(--ink-1)}
+  .donut-center-lab{font-size:10.5px; fill:var(--ink-3)}
+  .legend{display:flex; flex-direction:column; gap:9px; flex:1; min-width:0}
+  .legend-row{display:flex; align-items:center; gap:9px; font-size:12.5px; cursor:pointer;
+    padding:4px 8px; border-radius:9px; transition:background .2s; animation:pageIn .45s var(--ease-out) both}
+  .legend-row:hover{background:var(--brand-50)}
+  .legend-row.dim{opacity:.35}
+  .legend-swatch{width:11px;height:11px;border-radius:4px;flex:0 0 11px}
+  .legend-label{flex:1; color:var(--ink-2); font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+  .legend-val{font-weight:700} .legend-pct{color:var(--ink-3); width:38px; text-align:right}
+
+  .bar-rect{transform-box:fill-box; transform-origin:bottom; cursor:pointer; transition:filter .2s}
+  .bar-rect:hover{filter:brightness(1.12)}
+  .grow-in{animation:growY .7s var(--ease-out) both}
+  @keyframes growY{from{transform:scaleY(0)}to{transform:scaleY(1)}}
+
+  /* budget meter */
+  .meter-track{height:14px; border-radius:999px; background:var(--brand-100); overflow:hidden; margin-top:14px}
+  .meter-fill{height:100%; border-radius:999px; background:var(--grad); width:0;
+    transition:width 1s var(--ease-out), background .4s}
+  .meter-fill.warn{background:linear-gradient(135deg,#fab219,#e8930a)}
+  .meter-fill.over{background:linear-gradient(135deg,#e05252,#d03b3b)}
+  .meter-meta{display:flex; justify-content:space-between; font-size:12px; color:var(--ink-2); margin-top:8px; font-weight:600}
+  .meter-status{display:flex; align-items:center; gap:6px; margin-top:14px; font-size:12.5px; font-weight:700}
+
+  /* tooltip */
+  .tooltip{
+    position:fixed; z-index:60; pointer-events:none; opacity:0; transform:translateY(4px) scale(.97);
+    transition:opacity .15s, transform .15s var(--ease-out);
+    background:rgba(255,255,255,.96); backdrop-filter:blur(8px);
+    border:1px solid var(--border); border-radius:12px; box-shadow:var(--shadow-pop);
+    padding:9px 12px; font-size:12px; min-width:120px;
+  }
+  .tooltip.show{opacity:1; transform:none}
+  .tooltip .tt-title{color:var(--ink-3); font-weight:600; margin-bottom:3px}
+  .tooltip .tt-row{display:flex; align-items:center; gap:7px; font-weight:700; color:var(--ink-1)}
+  .tooltip .tt-swatch{width:9px;height:9px;border-radius:3px}
+
+  /* ============ Expenses page ============ */
+  .exp-toolbar{display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:14px}
+  .search{
+    position:relative; flex:0 0 260px;
+  }
+  .search input{
+    width:100%; border:1px solid var(--border); border-radius:12px; padding:10px 12px 10px 36px;
+    font:inherit; font-size:13px; background:var(--surface); color:var(--ink-1);
+    transition:border-color .2s, box-shadow .2s;
+  }
+  .search input:focus{outline:none; border-color:var(--brand-400); box-shadow:0 0 0 4px rgba(139,92,246,.15)}
+  .search svg{position:absolute; left:12px; top:50%; transform:translateY(-50%); width:15px; height:15px; color:var(--ink-3)}
+  .exp-summary{font-size:12.5px; color:var(--ink-3); margin:2px 4px 10px; font-weight:600}
+
+  .exp-table{padding:6px 0; overflow:hidden}
+  .exp-head,.exp-row{
+    display:grid; grid-template-columns:44px 1.6fr 1fr .8fr .7fr 44px; align-items:center; gap:12px;
+    padding:0 18px;
+  }
+  .exp-head{font-size:11px; text-transform:uppercase; letter-spacing:.06em; color:var(--ink-3);
+    font-weight:700; padding-top:8px; padding-bottom:8px; border-bottom:1px solid var(--grid)}
+  .exp-row{
+    height:60px; border-bottom:1px solid var(--grid); overflow:hidden;
+    transition:background .2s, height .35s var(--ease-out), opacity .3s, transform .35s var(--ease-out);
+    animation:rowIn .45s var(--ease-out) both;
+  }
+  @keyframes rowIn{from{opacity:0; transform:translateY(10px)}to{opacity:1; transform:none}}
+  .exp-row:hover{background:var(--brand-50)}
+  .exp-row:last-child{border-bottom:0}
+  .exp-row.removing{height:0; opacity:0; transform:translateX(40px); border-bottom-width:0}
+  .cat-ico{width:38px;height:38px;border-radius:12px;display:grid;place-items:center;font-size:17px}
+  .exp-name{font-size:13.5px; font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+  .exp-note{font-size:11.5px; color:var(--ink-3); font-weight:500}
+  .cat-pill{display:inline-flex; align-items:center; gap:6px; font-size:12px; font-weight:700; color:var(--ink-2)}
+  .cat-pill i{width:9px;height:9px;border-radius:50%;display:inline-block}
+  .exp-date{font-size:12.5px; color:var(--ink-2); font-weight:600}
+  .exp-amt{font-size:13.5px; font-weight:800; text-align:right; font-variant-numeric:tabular-nums}
+  .del-btn{
+    width:32px;height:32px;border-radius:10px;border:0;background:transparent;cursor:pointer;color:var(--ink-3);
+    display:grid;place-items:center; opacity:0; transform:scale(.8);
+    transition:all .2s var(--ease-spring);
+  }
+  .exp-row:hover .del-btn{opacity:1; transform:none}
+  .del-btn:hover{background:#fdf1f1; color:var(--critical); transform:scale(1.08)}
+  .del-btn svg{width:15px;height:15px}
+
+  .empty{
+    text-align:center; padding:60px 20px; color:var(--ink-3); font-size:14px;
+  }
+  .empty .big{font-size:44px; margin-bottom:10px; animation:float 3s ease-in-out infinite}
+  @keyframes float{0%,100%{transform:translateY(0)}50%{transform:translateY(-8px)}}
+
+  /* ============ Settings ============ */
+  .settings-grid{display:grid; grid-template-columns:1fr 1fr; gap:16px; max-width:860px}
+  .field{margin-bottom:14px}
+  .field label{display:block; font-size:12px; font-weight:700; color:var(--ink-2); margin-bottom:6px}
+  .field input,.field select{
+    width:100%; border:1px solid var(--border); border-radius:12px; padding:11px 13px;
+    font:inherit; font-size:13.5px; background:var(--surface); color:var(--ink-1);
+    transition:border-color .2s, box-shadow .2s;
+  }
+  .field input:focus,.field select:focus{outline:none; border-color:var(--brand-400); box-shadow:0 0 0 4px rgba(139,92,246,.15)}
+
+  /* ============ Modal ============ */
+  .modal-backdrop{
+    position:fixed; inset:0; z-index:50; display:grid; place-items:center;
+    background:rgba(26,21,35,.35); backdrop-filter:blur(6px);
+    opacity:0; pointer-events:none; transition:opacity .3s;
+  }
+  .modal-backdrop.open{opacity:1; pointer-events:auto}
+  .modal{
+    width:420px; max-width:calc(100vw - 40px); background:var(--surface); border-radius:24px;
+    box-shadow:var(--shadow-pop); padding:26px;
+    transform:translateY(24px) scale(.95); opacity:0; transition:all .4s var(--ease-spring);
+  }
+  .modal-backdrop.open .modal{transform:none; opacity:1}
+  .modal h2{margin:0 0 2px; font-size:19px; letter-spacing:-.02em}
+  .modal .hint{font-size:12.5px; color:var(--ink-3); margin:0 0 18px}
+  .cat-picker{display:grid; grid-template-columns:repeat(3,1fr); gap:8px}
+  .cat-opt{
+    border:1.5px solid var(--border); border-radius:12px; background:var(--surface); cursor:pointer;
+    padding:9px 6px; text-align:center; font:inherit; font-size:11.5px; font-weight:700; color:var(--ink-2);
+    transition:all .2s var(--ease-spring);
+  }
+  .cat-opt .em{display:block; font-size:17px; margin-bottom:3px}
+  .cat-opt:hover{transform:translateY(-2px); border-color:var(--brand-300)}
+  .cat-opt.sel{border-color:var(--brand-600); background:var(--brand-50); color:var(--brand-700);
+    box-shadow:0 6px 14px -8px rgba(109,40,217,.4)}
+  .modal-actions{display:flex; gap:10px; margin-top:20px}
+  .modal-actions .btn{flex:1; justify-content:center}
+  .shake{animation:shake .4s}
+  @keyframes shake{0%,100%{transform:translateX(0)}25%{transform:translateX(-6px)}55%{transform:translateX(5px)}80%{transform:translateX(-3px)}}
+
+  /* ============ Toasts ============ */
+  .toast-stack{position:fixed; bottom:24px; left:50%; transform:translateX(-50%); z-index:70;
+    display:flex; flex-direction:column; gap:10px; align-items:center}
+  .toast{
+    display:flex; align-items:center; gap:12px; background:var(--ink-1); color:#fff;
+    padding:12px 16px; border-radius:14px; font-size:13px; font-weight:600;
+    box-shadow:var(--shadow-pop); animation:toastIn .45s var(--ease-spring) both;
+  }
+  .toast.leaving{animation:toastOut .3s var(--ease-out) both}
+  @keyframes toastIn{from{opacity:0; transform:translateY(20px) scale(.9)}to{opacity:1; transform:none}}
+  @keyframes toastOut{to{opacity:0; transform:translateY(14px) scale(.95)}}
+  .toast button{border:0; background:rgba(255,255,255,.14); color:#c4adf6; font:inherit; font-size:12px;
+    font-weight:800; padding:5px 12px; border-radius:8px; cursor:pointer; transition:background .2s}
+  .toast button:hover{background:rgba(255,255,255,.24)}
+
+  @media (max-width:1100px){
+    .kpi-grid{grid-template-columns:repeat(2,1fr)}
+    .charts-grid,.charts-grid2,.settings-grid{grid-template-columns:1fr}
+  }
+  @media (prefers-reduced-motion: reduce){
+    *,*::before,*::after{animation-duration:.01ms !important; transition-duration:.01ms !important}
+  }
+</style>
+</head>
+<body>
+
+<div class="app">
+  <!-- ======== Sidebar ======== -->
+  <aside class="sidebar">
+    <div class="logo">
+      <div class="logo-mark">S</div>
+      <div class="logo-name">Spense</div>
+    </div>
+    <nav id="nav">
+      <div class="nav-pill" id="navPill"></div>
+      <button class="nav-item active" data-page="dashboard">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></svg>
+        Dashboard
+      </button>
+      <button class="nav-item" data-page="expenses">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="3"/><path d="M2 10h20"/><path d="M6 15h4"/></svg>
+        Expenses
+      </button>
+      <button class="nav-item" data-page="settings">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h.01a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h.01a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v.01a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+        Settings
+      </button>
+    </nav>
+    <div class="sidebar-foot">
+      <div class="promo">✨ <b>Spense Intelligence</b><br>Your spending on dining is trending down 12% this month. Nice work!</div>
+      <div class="user-card">
+        <div class="avatar">FA</div>
+        <div><div class="who">Felipe A.</div><div class="plan">Pro plan</div></div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- ======== Main ======== -->
+  <main>
+    <div class="topbar">
+      <div>
+        <div class="page-title" id="pageTitle">Dashboard</div>
+        <div class="page-sub" id="pageSub"></div>
+      </div>
+      <div class="spacer"></div>
+      <button class="btn btn-primary" id="addBtnTop">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+        Add expense
+      </button>
+    </div>
+
+    <div class="content">
+      <!-- ===== Dashboard ===== -->
+      <section class="page active" id="page-dashboard">
+        <div class="kpi-grid" id="kpiGrid"></div>
+
+        <div class="charts-grid">
+          <div class="card">
+            <div class="card-head">
+              <div>
+                <h3 class="card-title">Spending over time</h3>
+                <p class="card-sub" id="areaSub">Daily total, last 30 days</p>
+              </div>
+              <div class="spacer"></div>
+              <div class="chip-row" id="rangeChips">
+                <button class="chip active" data-days="30">30D</button>
+                <button class="chip" data-days="60">60D</button>
+                <button class="chip" data-days="90">90D</button>
+              </div>
+            </div>
+            <div id="areaChart"></div>
+          </div>
+          <div class="card">
+            <div class="card-head">
+              <div>
+                <h3 class="card-title">By category</h3>
+                <p class="card-sub">This month</p>
+              </div>
+            </div>
+            <div class="donut-wrap" id="donutWrap"></div>
+          </div>
+        </div>
+
+        <div class="charts-grid2">
+          <div class="card">
+            <div class="card-head">
+              <div>
+                <h3 class="card-title">Monthly spend</h3>
+                <p class="card-sub">Last 6 months</p>
+              </div>
+            </div>
+            <div id="barChart"></div>
+          </div>
+          <div class="card">
+            <h3 class="card-title">Monthly budget</h3>
+            <p class="card-sub" id="budgetSub"></p>
+            <div class="meter-track"><div class="meter-fill" id="meterFill"></div></div>
+            <div class="meter-meta"><span id="meterSpent"></span><span id="meterBudget"></span></div>
+            <div class="meter-status" id="meterStatus"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ===== Expenses ===== -->
+      <section class="page" id="page-expenses">
+        <div class="exp-toolbar">
+          <div class="search">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.4-3.4"/></svg>
+            <input type="text" id="searchInput" placeholder="Search expenses…">
+          </div>
+          <div class="chip-row" id="catChips"></div>
+        </div>
+        <div class="exp-summary" id="expSummary"></div>
+        <div class="card exp-table" id="expTable"></div>
+      </section>
+
+      <!-- ===== Settings ===== -->
+      <section class="page" id="page-settings">
+        <div class="settings-grid">
+          <div class="card">
+            <h3 class="card-title">Budget</h3>
+            <p class="card-sub">Used for the budget meter on your dashboard.</p>
+            <div class="field">
+              <label for="budgetInput">Monthly budget (USD)</label>
+              <input type="number" id="budgetInput" min="100" step="50">
+            </div>
+            <button class="btn btn-primary" id="saveBudget">Save budget</button>
+          </div>
+          <div class="card">
+            <h3 class="card-title">Data</h3>
+            <p class="card-sub">Everything is stored locally in your browser.</p>
+            <div style="display:flex; gap:10px; flex-wrap:wrap">
+              <button class="btn btn-ghost" id="resetDemo">Reset demo data</button>
+              <button class="btn btn-danger" id="clearAll">Delete all expenses</button>
+            </div>
+          </div>
+        </div>
+      </section>
+    </div>
+  </main>
+</div>
+
+<!-- ======== Add-expense modal ======== -->
+<div class="modal-backdrop" id="modalBackdrop">
+  <div class="modal" id="modal">
+    <h2>New expense</h2>
+    <p class="hint">Track it now, thank yourself later.</p>
+    <div class="field">
+      <label for="fName">Description</label>
+      <input type="text" id="fName" placeholder="e.g. Groceries at Lidl" maxlength="60">
+    </div>
+    <div class="field">
+      <label for="fAmount">Amount (USD)</label>
+      <input type="number" id="fAmount" placeholder="0.00" min="0.01" step="0.01">
+    </div>
+    <div class="field">
+      <label>Category</label>
+      <div class="cat-picker" id="catPicker"></div>
+    </div>
+    <div class="field">
+      <label for="fDate">Date</label>
+      <input type="date" id="fDate">
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" id="cancelModal">Cancel</button>
+      <button class="btn btn-primary" id="saveExpense">Add expense</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast-stack" id="toastStack"></div>
+<div class="tooltip" id="tooltip"></div>
+
+<script>
+/* ================= Data model ================= */
+const CATS = {
+  housing:  {label:'Housing',       color:'#6d28d9', bg:'#ede8fd', icon:'🏠'},
+  food:     {label:'Food & Dining', color:'#eb6834', bg:'#fdece4', icon:'🍜'},
+  transport:{label:'Transport',     color:'#1baf7a', bg:'#e2f6ee', icon:'🚕'},
+  shopping: {label:'Shopping',      color:'#eda100', bg:'#fdf3dd', icon:'🛍️'},
+  fun:      {label:'Entertainment', color:'#e87ba4', bg:'#fcebf1', icon:'🎬'},
+  other:    {label:'Other',         color:'#008300', bg:'#e5f3e5', icon:'📦'},
+};
+const CAT_ORDER = Object.keys(CATS);
+const LS_KEY = 'spense.expenses.v1';
+const LS_BUDGET = 'spense.budget.v1';
+
+const fmt$ = n => new Intl.NumberFormat('en-US',{style:'currency',currency:'USD',maximumFractionDigits:0}).format(n);
+const fmt$c = n => new Intl.NumberFormat('en-US',{style:'currency',currency:'USD'}).format(n);
+const dayKey = d => d.toISOString().slice(0,10);
+const uid = () => (crypto.randomUUID ? crypto.randomUUID() : 'id'+Math.random().toString(36).slice(2));
+
+function mulberry32(a){return function(){a|=0;a=a+0x6D2B79F5|0;var t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296}}
+
+function seedData(){
+  const rnd = mulberry32(20260820);
+  const merchants = {
+    housing:[['Rent — Maple St apartment',1450,1450],['Electricity bill',60,140],['Internet — Fiber 1Gb',49,49],['Water & waste',30,55]],
+    food:[['Groceries at Lidl',28,95],['Coffee at Blank Roast',4,9],['Lunch — Poke bowl',12,18],['Dinner at Osteria Nova',38,86],['Bakery run',5,14],['Groceries at Whole Foods',40,120]],
+    transport:[['Metro card top-up',20,40],['Uber ride',9,28],['E-bike share',3,8],['Fuel — Shell',45,70],['Parking downtown',6,14]],
+    shopping:[['Zalando order',35,140],['Bookshop haul',15,48],['IKEA bits & pieces',20,90],['Pharmacy',8,30],['New running shoes',80,150]],
+    fun:[['Cinema night',12,28],['Spotify Premium',11,11],['Concert tickets',45,120],['Bouldering session',18,24],['Streaming bundle',15,15]],
+    other:[['Gift for a friend',20,60],['Haircut',30,45],['House plants',12,35],['Postage & fees',5,18]],
+  };
+  const weights = [['food',.34],['transport',.2],['shopping',.16],['fun',.16],['other',.14]];
+  const out = [];
+  const today = new Date(); today.setHours(12,0,0,0);
+  for(let ago=185; ago>=0; ago--){
+    const d = new Date(today); d.setDate(d.getDate()-ago);
+    if(d.getDate()===1){ // rent + fixed bills at month start
+      const m = merchants.housing[0];
+      out.push({id:uid(), name:m[0], cat:'housing', amount:m[1], date:dayKey(d)});
+      if(rnd()<.9){const b=merchants.housing[1+Math.floor(rnd()*3)];
+        out.push({id:uid(), name:b[0], cat:'housing', amount:+(b[1]+rnd()*(b[2]-b[1])).toFixed(2), date:dayKey(d)});}
+    }
+    const n = rnd()<.28 ? 0 : (rnd()<.7 ? 1 : 2);
+    for(let i=0;i<n;i++){
+      let r=rnd(), cat='other';
+      for(const [c,w] of weights){ if(r<w){cat=c;break} r-=w; }
+      const list = merchants[cat];
+      const m = list[Math.floor(rnd()*list.length)];
+      out.push({id:uid(), name:m[0], cat, amount:+(m[1]+rnd()*(m[2]-m[1])).toFixed(2), date:dayKey(d)});
+    }
+  }
+  return out;
+}
+
+let expenses = [];
+try{ expenses = JSON.parse(localStorage.getItem(LS_KEY)) || []; }catch(e){ expenses = []; }
+if(!localStorage.getItem(LS_KEY)){ expenses = seedData(); persist(); }
+let budget = +(localStorage.getItem(LS_BUDGET) || 3200);
+
+function persist(){ localStorage.setItem(LS_KEY, JSON.stringify(expenses)); }
+
+/* ================= Derived data ================= */
+function monthKey(dateStr){ return dateStr.slice(0,7); }
+function thisMonthKey(){ return dayKey(new Date()).slice(0,7); }
+function inMonth(e, mk){ return monthKey(e.date)===mk; }
+function sum(list){ return list.reduce((a,e)=>a+e.amount,0); }
+
+function monthTotals(nMonths){
+  const res=[]; const now=new Date();
+  for(let i=nMonths-1;i>=0;i--){
+    const d=new Date(now.getFullYear(), now.getMonth()-i, 1);
+    const mk=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+    res.push({key:mk, label:d.toLocaleDateString('en-US',{month:'short'}), total:sum(expenses.filter(e=>inMonth(e,mk)))});
+  }
+  return res;
+}
+function dailyTotals(days){
+  const map={}; expenses.forEach(e=>{ map[e.date]=(map[e.date]||0)+e.amount; });
+  const res=[]; const today=new Date(); today.setHours(12,0,0,0);
+  for(let i=days-1;i>=0;i--){
+    const d=new Date(today); d.setDate(d.getDate()-i);
+    const k=dayKey(d);
+    res.push({date:d, key:k, total:map[k]||0});
+  }
+  return res;
+}
+function categoryTotals(mk){
+  return CAT_ORDER.map(c=>({cat:c, ...CATS[c], value:sum(expenses.filter(e=>e.cat===c && inMonth(e,mk)))}))
+    .filter(d=>d.value>0);
+}
+
+/* ================= Tooltip ================= */
+const tooltip = document.getElementById('tooltip');
+function showTip(x,y,title,rows){
+  tooltip.innerHTML = `<div class="tt-title">${title}</div>` +
+    rows.map(r=>`<div class="tt-row">${r.color?`<span class="tt-swatch" style="background:${r.color}"></span>`:''}<span>${r.text}</span></div>`).join('');
+  tooltip.classList.add('show');
+  const w=tooltip.offsetWidth, h=tooltip.offsetHeight;
+  let tx=x+14, ty=y-h-10;
+  if(tx+w>innerWidth-10) tx=x-w-14;
+  if(ty<10) ty=y+16;
+  tooltip.style.left=tx+'px'; tooltip.style.top=ty+'px';
+}
+function hideTip(){ tooltip.classList.remove('show'); }
+
+/* ================= Charts ================= */
+const NS='http://www.w3.org/2000/svg';
+function svgEl(tag, attrs){ const el=document.createElementNS(NS,tag);
+  for(const k in attrs) el.setAttribute(k, attrs[k]); return el; }
+function niceMax(v){
+  if(v<=0) return 100;
+  const p=Math.pow(10,Math.floor(Math.log10(v)));
+  for(const m of [1,1.5,2,2.5,3,4,5,6,8,10]){ if(m*p>=v) return m*p; }
+  return 10*p;
+}
+
+/* ---- Area / line chart with crosshair ---- */
+let areaDays = 30;
+function renderAreaChart(){
+  const host=document.getElementById('areaChart');
+  const W=host.clientWidth||620, H=250, padL=46, padR=14, padT=14, padB=26;
+  const data=dailyTotals(areaDays);
+  const maxV=niceMax(Math.max(...data.map(d=>d.total),1));
+  const iw=W-padL-padR, ih=H-padT-padB;
+  const x=i=>padL+iw*(i/(data.length-1));
+  const y=v=>padT+ih*(1-v/maxV);
+  const pts=data.map((d,i)=>({px:x(i), py:y(d.total), ...d}));
+
+  const svg=svgEl('svg',{viewBox:`0 0 ${W} ${H}`, width:'100%', height:H});
+  // gridlines + y ticks
+  const ticks=4;
+  for(let t=0;t<=ticks;t++){
+    const v=maxV*t/ticks, ty=y(v);
+    svg.appendChild(svgEl('line',{x1:padL,x2:W-padR,y1:ty,y2:ty,class:t===0?'baseline':'gridline'}));
+    const lab=svgEl('text',{x:padL-8,y:ty+3.5,'text-anchor':'end',class:'axis-text'});
+    lab.textContent=v>=1000?(v/1000)+'k':Math.round(v); svg.appendChild(lab);
+  }
+  // x labels (sparse)
+  const step=Math.ceil(data.length/6);
+  pts.forEach((p,i)=>{ if(i%step===0){
+    const lab=svgEl('text',{x:p.px,y:H-8,'text-anchor':'middle',class:'axis-text'});
+    lab.textContent=p.date.toLocaleDateString('en-US',{month:'short',day:'numeric'});
+    svg.appendChild(lab);
+  }});
+  // smooth path (catmull-rom → bezier)
+  function pathFrom(pts){
+    let d=`M ${pts[0].px} ${pts[0].py}`;
+    for(let i=0;i<pts.length-1;i++){
+      const p0=pts[Math.max(0,i-1)], p1=pts[i], p2=pts[i+1], p3=pts[Math.min(pts.length-1,i+2)];
+      const c1x=p1.px+(p2.px-p0.px)/6, c1y=p1.py+(p2.py-p0.py)/6;
+      const c2x=p2.px-(p3.px-p1.px)/6, c2y=p2.py-(p3.py-p1.py)/6;
+      d+=` C ${c1x} ${c1y}, ${c2x} ${c2y}, ${p2.px} ${p2.py}`;
+    }
+    return d;
+  }
+  const lineD=pathFrom(pts);
+  const grad=svgEl('linearGradient',{id:'areaGrad',x1:0,y1:0,x2:0,y2:1});
+  grad.appendChild(svgEl('stop',{offset:'0%','stop-color':'#6d28d9','stop-opacity':.18}));
+  grad.appendChild(svgEl('stop',{offset:'100%','stop-color':'#6d28d9','stop-opacity':.02}));
+  const defs=svgEl('defs',{}); defs.appendChild(grad); svg.appendChild(defs);
+  const area=svgEl('path',{d:lineD+` L ${pts[pts.length-1].px} ${y(0)} L ${pts[0].px} ${y(0)} Z`, fill:'url(#areaGrad)', opacity:0});
+  svg.appendChild(area);
+  const line=svgEl('path',{d:lineD, fill:'none', stroke:'#6d28d9','stroke-width':2,'stroke-linejoin':'round','stroke-linecap':'round'});
+  svg.appendChild(line);
+  // end marker with surface ring
+  const last=pts[pts.length-1];
+  svg.appendChild(svgEl('circle',{cx:last.px,cy:last.py,r:6,fill:'#fff'}));
+  svg.appendChild(svgEl('circle',{cx:last.px,cy:last.py,r:4,fill:'#6d28d9'}));
+  // crosshair layer
+  const xline=svgEl('line',{y1:padT,y2:padT+ih,stroke:'#c4adf6','stroke-width':1,opacity:0});
+  const dotRing=svgEl('circle',{r:7,fill:'#fff',opacity:0});
+  const dot=svgEl('circle',{r:4.5,fill:'#6d28d9',opacity:0});
+  svg.appendChild(xline); svg.appendChild(dotRing); svg.appendChild(dot);
+  const cap=svgEl('rect',{x:padL,y:padT,width:iw,height:ih,class:'hover-capture'});
+  svg.appendChild(cap);
+  cap.addEventListener('mousemove',ev=>{
+    const r=svg.getBoundingClientRect();
+    const mx=(ev.clientX-r.left)*(W/r.width);
+    const i=Math.max(0,Math.min(pts.length-1,Math.round((mx-padL)/iw*(pts.length-1))));
+    const p=pts[i];
+    xline.setAttribute('x1',p.px); xline.setAttribute('x2',p.px); xline.setAttribute('opacity',1);
+    dotRing.setAttribute('cx',p.px); dotRing.setAttribute('cy',p.py); dotRing.setAttribute('opacity',1);
+    dot.setAttribute('cx',p.px); dot.setAttribute('cy',p.py); dot.setAttribute('opacity',1);
+    showTip(ev.clientX,ev.clientY,
+      p.date.toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'}),
+      [{color:'#6d28d9',text:fmt$c(p.total)}]);
+  });
+  cap.addEventListener('mouseleave',()=>{ [xline,dotRing,dot].forEach(el=>el.setAttribute('opacity',0)); hideTip(); });
+
+  host.innerHTML=''; host.appendChild(svg);
+  // draw-in animation
+  const len=line.getTotalLength();
+  line.style.strokeDasharray=len; line.style.strokeDashoffset=len;
+  line.getBoundingClientRect();
+  line.style.transition='stroke-dashoffset 1.1s cubic-bezier(.22,.61,.21,1)';
+  line.style.strokeDashoffset=0;
+  area.style.transition='opacity .8s ease .35s'; area.style.opacity=1;
+  document.getElementById('areaSub').textContent=`Daily total, last ${areaDays} days`;
+}
+
+/* ---- Donut ---- */
+let donutHidden = new Set();
+function renderDonut(){
+  const wrap=document.getElementById('donutWrap');
+  const all=categoryTotals(thisMonthKey());
+  const data=all.filter(d=>!donutHidden.has(d.cat));
+  wrap.innerHTML='';
+  if(!all.length){ wrap.innerHTML='<div class="empty" style="flex:1"><div class="big">🌱</div>No expenses this month yet.</div>'; return; }
+  const size=200, cx=size/2, cy=size/2, r=72, sw=26;
+  const C=2*Math.PI*r, gap=3;
+  const totalVal=data.reduce((a,d)=>a+d.value,0);
+  const svg=svgEl('svg',{viewBox:`0 0 ${size} ${size}`, class:'donut-svg', width:size, height:size});
+  const g=svgEl('g',{transform:`rotate(-90 ${cx} ${cy})`});
+  let acc=0;
+  data.forEach((d,i)=>{
+    const frac=d.value/totalVal;
+    const len=Math.max(frac*C-gap,.6);
+    const seg=svgEl('circle',{cx,cy,r,fill:'none',stroke:d.color,'stroke-width':sw,
+      'stroke-dasharray':`0 ${C}`, 'stroke-dashoffset':-(acc*C+gap/2), class:'donut-seg'});
+    seg.style.transitionDelay=(i*70)+'ms';
+    seg.addEventListener('mousemove',ev=>showTip(ev.clientX,ev.clientY,'This month',
+      [{color:d.color,text:`${d.label} — ${fmt$c(d.value)} (${Math.round(frac*100)}%)`}]));
+    seg.addEventListener('mouseleave',hideTip);
+    g.appendChild(seg);
+    requestAnimationFrame(()=>requestAnimationFrame(()=>seg.setAttribute('stroke-dasharray',`${len} ${C-len}`)));
+    acc+=frac;
+  });
+  svg.appendChild(g);
+  const t1=svgEl('text',{x:cx,y:cy-2,'text-anchor':'middle',class:'donut-center-val'});
+  t1.textContent=fmt$(totalVal);
+  const t2=svgEl('text',{x:cx,y:cy+16,'text-anchor':'middle',class:'donut-center-lab'});
+  t2.textContent='this month';
+  svg.appendChild(t1); svg.appendChild(t2);
+  wrap.appendChild(svg);
+
+  const legend=document.createElement('div'); legend.className='legend';
+  all.forEach((d,i)=>{
+    const row=document.createElement('div');
+    row.className='legend-row'+(donutHidden.has(d.cat)?' dim':'');
+    row.style.animationDelay=(i*60)+'ms';
+    const pct=totalVal?Math.round(d.value/totalVal*100):0;
+    row.innerHTML=`<span class="legend-swatch" style="background:${d.color}"></span>
+      <span class="legend-label">${d.label}</span>
+      <span class="legend-val">${fmt$(d.value)}</span>
+      <span class="legend-pct">${donutHidden.has(d.cat)?'—':pct+'%'}</span>`;
+    row.addEventListener('click',()=>{
+      donutHidden.has(d.cat)?donutHidden.delete(d.cat):donutHidden.add(d.cat);
+      renderDonut();
+    });
+    legend.appendChild(row);
+  });
+  wrap.appendChild(legend);
+}
+
+/* ---- Monthly bars ---- */
+function renderBars(){
+  const host=document.getElementById('barChart');
+  const W=host.clientWidth||480, H=220, padL=46, padR=10, padT=16, padB=26;
+  const data=monthTotals(6);
+  const maxV=niceMax(Math.max(...data.map(d=>d.total),1));
+  const iw=W-padL-padR, ih=H-padT-padB;
+  const y=v=>padT+ih*(1-v/maxV);
+  const svg=svgEl('svg',{viewBox:`0 0 ${W} ${H}`, width:'100%', height:H});
+  const ticks=4;
+  for(let t=0;t<=ticks;t++){
+    const v=maxV*t/ticks, ty=y(v);
+    svg.appendChild(svgEl('line',{x1:padL,x2:W-padR,y1:ty,y2:ty,class:t===0?'baseline':'gridline'}));
+    const lab=svgEl('text',{x:padL-8,y:ty+3.5,'text-anchor':'end',class:'axis-text'});
+    lab.textContent=v>=1000?(v/1000)+'k':Math.round(v); svg.appendChild(lab);
+  }
+  const bw=Math.min(24, iw/data.length*.5);
+  data.forEach((d,i)=>{
+    const bx=padL+iw*(i+.5)/data.length - bw/2;
+    const by=y(d.total), bh=Math.max(y(0)-by,0);
+    const rr=Math.min(4,bh);
+    const isCur=i===data.length-1;
+    const path=svgEl('path',{class:'bar-rect grow-in',
+      d:`M ${bx} ${y(0)} L ${bx} ${by+rr} Q ${bx} ${by} ${bx+rr} ${by} L ${bx+bw-rr} ${by} Q ${bx+bw} ${by} ${bx+bw} ${by+rr} L ${bx+bw} ${y(0)} Z`,
+      fill:isCur?'#6d28d9':'#c4adf6'});
+    path.style.animationDelay=(i*80)+'ms';
+    path.addEventListener('mousemove',ev=>showTip(ev.clientX,ev.clientY,d.label+(isCur?' (so far)':''),
+      [{color:isCur?'#6d28d9':'#c4adf6',text:fmt$c(d.total)}]));
+    path.addEventListener('mouseleave',hideTip);
+    svg.appendChild(path);
+    const xl=svgEl('text',{x:bx+bw/2,y:H-8,'text-anchor':'middle',class:'axis-text'});
+    xl.textContent=d.label; svg.appendChild(xl);
+    if(isCur && d.total>0){ // selective direct label on the current month
+      const vl=svgEl('text',{x:bx+bw/2,y:by-7,'text-anchor':'middle',class:'axis-text',
+        style:'font-weight:700; fill:#1a1523; font-size:11px'});
+      vl.textContent=fmt$(d.total); svg.appendChild(vl);
+    }
+  });
+  host.innerHTML=''; host.appendChild(svg);
+}
+
+/* ---- KPI tiles ---- */
+function sparkline(values, w, h){
+  const max=Math.max(...values,1), min=0;
+  const pts=values.map((v,i)=>`${(i/(values.length-1))*w},${h-2-(v-min)/(max-min)*(h-6)}`);
+  const lastX=w, lastY=h-2-(values[values.length-1]-min)/(max-min)*(h-6);
+  return `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" style="overflow:visible">
+    <polyline points="${pts.join(' ')}" fill="none" stroke="#c4adf6" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+    <circle cx="${lastX}" cy="${lastY}" r="4.5" fill="#fff"/><circle cx="${lastX}" cy="${lastY}" r="3" fill="#6d28d9"/>
+  </svg>`;
+}
+function animateNumber(el, to, fmt){
+  if(matchMedia('(prefers-reduced-motion: reduce)').matches){ el.textContent=fmt(to); return; }
+  const dur=900, t0=performance.now();
+  function tick(t){
+    const p=Math.min(1,(t-t0)/dur), e=1-Math.pow(1-p,3);
+    el.textContent=fmt(to*e);
+    if(p<1) requestAnimationFrame(tick);
+  }
+  requestAnimationFrame(tick);
+}
+function renderKPIs(){
+  const grid=document.getElementById('kpiGrid');
+  const mk=thisMonthKey();
+  const now=new Date();
+  const prev=new Date(now.getFullYear(),now.getMonth()-1,1);
+  const pk=`${prev.getFullYear()}-${String(prev.getMonth()+1).padStart(2,'0')}`;
+  const cur=expenses.filter(e=>inMonth(e,mk));
+  const last=expenses.filter(e=>inMonth(e,pk));
+  const curT=sum(cur), lastT=sum(last);
+  const deltaPct=lastT?((curT-lastT)/lastT*100):0;
+  const avgDay=curT/now.getDate();
+  const cats=categoryTotals(mk).sort((a,b)=>b.value-a.value);
+  const top=cats[0];
+  // 12-point sparkline: spend of last 12 weeks
+  const weeks=[]; const daily=dailyTotals(84);
+  for(let i=0;i<12;i++) weeks.push(sum(daily.slice(i*7,(i+1)*7).map(d=>({amount:d.total}))));
+
+  const deltaHtml = lastT ? `<span class="kpi-delta ${deltaPct>=0?'up-bad':'down-good'}">
+      ${deltaPct>=0?'▲':'▼'} ${Math.abs(deltaPct).toFixed(1)}% <span class="vs">vs last month</span></span>` : '';
+  grid.innerHTML=`
+    <div class="card" style="animation-delay:0ms">
+      <div class="kpi-label">Spent this month</div>
+      <div class="kpi-value" data-anim data-to="${curT}" data-fmt="cur"></div>
+      ${deltaHtml}
+      <div class="kpi-spark">${sparkline(weeks,150,34)}</div>
+    </div>
+    <div class="card" style="animation-delay:70ms">
+      <div class="kpi-label">Average per day</div>
+      <div class="kpi-value" data-anim data-to="${avgDay}" data-fmt="curc"></div>
+      <span class="kpi-delta"><span class="vs">${now.toLocaleDateString('en-US',{month:'long'})}, ${now.getDate()} days in</span></span>
+    </div>
+    <div class="card" style="animation-delay:140ms">
+      <div class="kpi-label">Transactions</div>
+      <div class="kpi-value" data-anim data-to="${cur.length}" data-fmt="int"></div>
+      <span class="kpi-delta"><span class="vs">${last.length} last month</span></span>
+    </div>
+    <div class="card" style="animation-delay:210ms">
+      <div class="kpi-label">Top category</div>
+      <div class="kpi-value" style="font-size:21px; margin-top:10px">${top?`<span class="kpi-dot" style="background:${top.color}"></span>${top.label}`:'—'}</div>
+      <span class="kpi-delta"><span class="vs">${top?fmt$(top.value)+' this month':'no expenses yet'}</span></span>
+    </div>`;
+  grid.querySelectorAll('[data-anim]').forEach(el=>{
+    const to=+el.dataset.to, kind=el.dataset.fmt;
+    const f = kind==='int' ? v=>Math.round(v) : kind==='curc' ? fmt$c : fmt$;
+    animateNumber(el,to,f);
+  });
+}
+
+/* ---- Budget meter ---- */
+function renderBudget(){
+  const mk=thisMonthKey();
+  const spent=sum(expenses.filter(e=>inMonth(e,mk)));
+  const pct=Math.min(spent/budget*100,100);
+  const fill=document.getElementById('meterFill');
+  fill.classList.toggle('warn', spent/budget>=.85 && spent<=budget);
+  fill.classList.toggle('over', spent>budget);
+  requestAnimationFrame(()=>fill.style.width=pct+'%');
+  document.getElementById('meterSpent').textContent=`${fmt$(spent)} spent`;
+  document.getElementById('meterBudget').textContent=`of ${fmt$(budget)}`;
+  document.getElementById('budgetSub').textContent=`${Math.round(spent/budget*100)}% of your monthly budget used`;
+  const st=document.getElementById('meterStatus');
+  if(spent>budget){ st.style.color='var(--critical)'; st.innerHTML='⚠️ Over budget by '+fmt$(spent-budget); }
+  else if(spent/budget>=.85){ st.style.color='#9a6b00'; st.innerHTML='⚠️ Getting close — '+fmt$(budget-spent)+' left'; }
+  else { st.style.color='var(--good-text)'; st.innerHTML='✅ On track — '+fmt$(budget-spent)+' left this month'; }
+}
+
+function renderDashboard(){
+  renderKPIs(); renderAreaChart(); renderDonut(); renderBars(); renderBudget();
+}
+
+/* ================= Expenses page ================= */
+let searchQ='', catFilter='all';
+function renderCatChips(){
+  const host=document.getElementById('catChips');
+  host.innerHTML='';
+  const mk = c => { const b=document.createElement('button');
+    b.className='chip'+((catFilter===c)?' active':''); b.dataset.cat=c;
+    b.textContent = c==='all' ? 'All' : CATS[c].label;
+    b.addEventListener('click',()=>{ catFilter=c; renderCatChips(); renderExpenses(); });
+    host.appendChild(b); };
+  mk('all'); CAT_ORDER.forEach(mk);
+}
+function renderExpenses(){
+  const host=document.getElementById('expTable');
+  let list=[...expenses].sort((a,b)=>b.date.localeCompare(a.date));
+  if(catFilter!=='all') list=list.filter(e=>e.cat===catFilter);
+  if(searchQ) list=list.filter(e=>e.name.toLowerCase().includes(searchQ));
+  document.getElementById('expSummary').textContent =
+    `${list.length} expense${list.length===1?'':'s'} · ${fmt$c(sum(list))} total`;
+  if(!list.length){
+    host.innerHTML=`<div class="empty"><div class="big">🕊️</div>Nothing here${searchQ||catFilter!=='all'?' — try clearing your filters.':' yet — add your first expense!'}</div>`;
+    return;
+  }
+  const shown=list.slice(0,120);
+  host.innerHTML=`<div class="exp-head"><span></span><span>Description</span><span>Category</span><span>Date</span><span style="text-align:right">Amount</span><span></span></div>`+
+    shown.map((e,i)=>{
+      const c=CATS[e.cat];
+      const d=new Date(e.date+'T12:00:00');
+      return `<div class="exp-row" data-id="${e.id}" style="animation-delay:${Math.min(i*28,500)}ms">
+        <div class="cat-ico" style="background:${c.bg}">${c.icon}</div>
+        <div><div class="exp-name">${e.name}</div></div>
+        <div class="cat-pill"><i style="background:${c.color}"></i>${c.label}</div>
+        <div class="exp-date">${d.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}</div>
+        <div class="exp-amt">${fmt$c(e.amount)}</div>
+        <button class="del-btn" title="Delete" aria-label="Delete ${e.name}">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 6h18M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2m3 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M10 11v6M14 11v6"/></svg>
+        </button>
+      </div>`;
+    }).join('') +
+    (list.length>shown.length?`<div class="exp-summary" style="padding:12px 18px">…and ${list.length-shown.length} older expenses</div>`:'');
+  host.querySelectorAll('.del-btn').forEach(btn=>{
+    btn.addEventListener('click',ev=>{
+      const row=ev.currentTarget.closest('.exp-row');
+      deleteExpense(row.dataset.id, row);
+    });
+  });
+}
+function deleteExpense(id, row){
+  const idx=expenses.findIndex(e=>e.id===id);
+  if(idx<0) return;
+  const [removed]=expenses.splice(idx,1);
+  persist();
+  if(row){
+    row.style.height=row.offsetHeight+'px';
+    row.getBoundingClientRect();
+    row.style.animation='none';
+    row.classList.add('removing');
+    row.style.height='0px';
+    row.addEventListener('transitionend',()=>row.remove(),{once:true});
+    document.getElementById('expSummary').textContent='';
+    setTimeout(()=>{ renderExpenses(); },380);
+  } else renderExpenses();
+  toast(`Deleted “${removed.name}” · ${fmt$c(removed.amount)}`, {label:'Undo', fn:()=>{
+    expenses.push(removed); persist(); renderExpenses();
+    if(current==='dashboard') renderDashboard();
+  }});
+}
+
+/* ================= Modal ================= */
+const backdrop=document.getElementById('modalBackdrop');
+let selCat='food';
+function buildCatPicker(){
+  const host=document.getElementById('catPicker'); host.innerHTML='';
+  CAT_ORDER.forEach(c=>{
+    const b=document.createElement('button');
+    b.type='button';
+    b.className='cat-opt'+(selCat===c?' sel':'');
+    b.innerHTML=`<span class="em">${CATS[c].icon}</span>${CATS[c].label}`;
+    b.addEventListener('click',()=>{ selCat=c; buildCatPicker(); });
+    host.appendChild(b);
+  });
+}
+function openModal(){
+  document.getElementById('fName').value='';
+  document.getElementById('fAmount').value='';
+  document.getElementById('fDate').value=dayKey(new Date());
+  selCat='food'; buildCatPicker();
+  backdrop.classList.add('open');
+  setTimeout(()=>document.getElementById('fName').focus(),250);
+}
+function closeModal(){ backdrop.classList.remove('open'); }
+document.getElementById('addBtnTop').addEventListener('click',openModal);
+document.getElementById('cancelModal').addEventListener('click',closeModal);
+backdrop.addEventListener('click',e=>{ if(e.target===backdrop) closeModal(); });
+document.addEventListener('keydown',e=>{ if(e.key==='Escape') closeModal(); });
+document.getElementById('saveExpense').addEventListener('click',()=>{
+  const name=document.getElementById('fName').value.trim();
+  const amount=parseFloat(document.getElementById('fAmount').value);
+  const date=document.getElementById('fDate').value || dayKey(new Date());
+  const modal=document.getElementById('modal');
+  if(!name || !(amount>0)){
+    modal.classList.remove('shake'); modal.getBoundingClientRect(); modal.classList.add('shake');
+    return;
+  }
+  expenses.push({id:uid(), name, amount:+amount.toFixed(2), cat:selCat, date});
+  persist(); closeModal();
+  toast(`Added “${name}” · ${fmt$c(amount)} ✨`);
+  if(current==='dashboard') renderDashboard();
+  if(current==='expenses') renderExpenses();
+});
+
+/* ================= Toasts ================= */
+function toast(msg, action){
+  const stack=document.getElementById('toastStack');
+  const t=document.createElement('div'); t.className='toast';
+  t.innerHTML=`<span>${msg}</span>`;
+  if(action){
+    const b=document.createElement('button'); b.textContent=action.label;
+    b.addEventListener('click',()=>{ action.fn(); kill(); });
+    t.appendChild(b);
+  }
+  stack.appendChild(t);
+  let gone=false;
+  function kill(){ if(gone)return; gone=true; t.classList.add('leaving'); setTimeout(()=>t.remove(),300); }
+  setTimeout(kill, 5000);
+}
+
+/* ================= Router ================= */
+const TITLES={
+  dashboard:['Dashboard', ()=>new Date().toLocaleDateString('en-US',{weekday:'long', month:'long', day:'numeric'})],
+  expenses:['Expenses', ()=>'Search, filter, add and remove records'],
+  settings:['Settings', ()=>'Budget & data preferences'],
+};
+let current='dashboard';
+const navItems=[...document.querySelectorAll('.nav-item')];
+function movePill(){
+  const active=document.querySelector('.nav-item.active');
+  const pill=document.getElementById('navPill');
+  pill.style.transform=`translateY(${active.offsetTop - navItems[0].offsetTop}px)`;
+}
+function go(page){
+  if(page===current && document.querySelector('#page-'+page).classList.contains('active')) return;
+  current=page;
+  navItems.forEach(n=>n.classList.toggle('active',n.dataset.page===page));
+  movePill();
+  document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
+  const el=document.getElementById('page-'+page);
+  void el.offsetWidth;
+  el.classList.add('active');
+  const [t,sub]=TITLES[page];
+  document.getElementById('pageTitle').textContent=t;
+  document.getElementById('pageSub').textContent=sub();
+  if(page==='dashboard') renderDashboard();
+  if(page==='expenses') renderExpenses();
+  if(page==='settings') document.getElementById('budgetInput').value=budget;
+}
+navItems.forEach(n=>n.addEventListener('click',()=>go(n.dataset.page)));
+
+/* range chips */
+document.querySelectorAll('#rangeChips .chip').forEach(ch=>{
+  ch.addEventListener('click',()=>{
+    document.querySelectorAll('#rangeChips .chip').forEach(c=>c.classList.remove('active'));
+    ch.classList.add('active');
+    areaDays=+ch.dataset.days;
+    renderAreaChart();
+  });
+});
+
+/* search */
+document.getElementById('searchInput').addEventListener('input',e=>{
+  searchQ=e.target.value.trim().toLowerCase(); renderExpenses();
+});
+
+/* settings */
+document.getElementById('saveBudget').addEventListener('click',()=>{
+  const v=parseFloat(document.getElementById('budgetInput').value);
+  if(!(v>0)) return;
+  budget=v; localStorage.setItem(LS_BUDGET, String(v));
+  toast('Budget updated to '+fmt$(v)+' 🎯');
+});
+document.getElementById('resetDemo').addEventListener('click',()=>{
+  expenses=seedData(); persist(); toast('Demo data restored 🔄');
+});
+document.getElementById('clearAll').addEventListener('click',()=>{
+  if(!confirm('Delete ALL expenses? This cannot be undone.')) return;
+  expenses=[]; persist(); toast('All expenses deleted');
+});
+
+/* resize re-render (debounced) */
+let rz;
+addEventListener('resize',()=>{ clearTimeout(rz); rz=setTimeout(()=>{
+  if(current==='dashboard'){ renderAreaChart(); renderBars(); }
+},180); });
+
+/* ================= Boot ================= */
+document.getElementById('pageSub').textContent=TITLES.dashboard[1]();
+renderCatChips();
+movePill();
+renderDashboard();
+const h=location.hash.slice(1);
+if(h && TITLES[h] && h!=='dashboard') go(h);
+if(h==='add') openModal();
+</script>
+</body>
+</html>
